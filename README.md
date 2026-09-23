@@ -23,16 +23,6 @@ Aplicación web interna para registrar y controlar órdenes ópticas desde la so
 - Bloqueo de operaciones concurrentes mediante `LockService`.
 - Renderizado seguro de datos externos mediante APIs del DOM.
 
-## 📸 Vista Previa del Sistema
-
-> Sustituye las rutas de ejemplo por capturas o GIFs del entorno de demostración antes de publicar el repositorio.
-
-![Dashboard de órdenes](https://drive.google.com/file/d/1ZKAjumDanb9U6K303pBujsjCLrk68088/view?usp=drive_link)
-
-![Flujo de facturación y abonos](docs/billing-flow-preview.png)
-
-![GIF del ciclo completo de una orden](docs/order-lifecycle-demo.gif)
-
 ## 🔄 Ciclo de Vida de una Orden Óptica
 
 1. **Registro inicial:** se capturan los datos del paciente, referencias ópticas, valores y responsable del pago.
