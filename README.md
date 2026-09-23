@@ -1,4 +1,4 @@
-# Sistema de Gestión de Órdenes Ópticas
+# Sistema de Gestión de Órdenes óptica
 
 [![Google Apps Script](https://img.shields.io/badge/Google%20Apps%20Script-4285F4?logo=google&logoColor=white)](https://developers.google.com/apps-script)
 [![JavaScript ES6+](https://img.shields.io/badge/JavaScript-ES6%2B-F7DF1E?logo=javascript&logoColor=black)](https://developer.mozilla.org/docs/Web/JavaScript)
