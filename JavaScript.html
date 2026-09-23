@@ -1,0 +1,805 @@
+<script>
+// Estado de sesión y selección actual mantenido en el navegador.
+const DATOS_MENSAJE = {
+  organizacion: 'Organización de salud',
+  direccion: 'Dirección de atención',
+  horario: 'Horario de atención'
+};
+
+let usuarioSesion = null;
+  let currentMode = 'registro';
+  let esObsequio = false;
+  let ordenSeleccionada = null;
+
+  function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    let icon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️';
+    const iconElement = document.createElement('span');
+    iconElement.textContent = icon;
+    const messageElement = document.createElement('div');
+    messageElement.textContent = message;
+    toast.appendChild(iconElement);
+    toast.appendChild(messageElement);
+    container.appendChild(toast);
+    setTimeout(() => { toast.style.animation = 'fadeOut 0.3s ease forwards'; toast.addEventListener('animationend', () => toast.remove()); }, 3500);
+  }
+
+  // Normaliza entradas colombianas para construir una URL válida de WhatsApp.
+  function normalizarTelefonoWhatsApp(telefono) {
+    const digitos = String(telefono || '').replace(/\D/g, '');
+    if (!digitos) return '';
+
+    if (digitos.startsWith('57')) {
+      return digitos.length === 12 ? digitos : '';
+    }
+
+    return digitos.length === 10 ? '57' + digitos : '';
+  }
+
+  function obtenerMarcaFechaHora() {
+    const ahora = new Date();
+    const dia = String(ahora.getDate()).padStart(2, '0');
+    const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+    const anio = ahora.getFullYear();
+    const horas = String(ahora.getHours()).padStart(2, '0');
+    const minutos = String(ahora.getMinutes()).padStart(2, '0');
+    return dia + '/' + mes + '/' + anio + ' ' + horas + ':' + minutos;
+  }
+
+  // Abre el mensaje y deja la trazabilidad preparada para guardar en la orden.
+  function enviarWhatsAppRecepcion() {
+    if (!ordenSeleccionada || !ordenSeleccionada.telefono) {
+      showToast("Por favor, selecciona primero un pedido de la lista.", "warning");
+      return;
+    }
+
+    const telefono = normalizarTelefonoWhatsApp(ordenSeleccionada.telefono);
+    const nombre = ordenSeleccionada.nombre ? ordenSeleccionada.nombre.trim() : "Paciente";
+
+    if (!telefono) {
+      showToast("El teléfono debe contener 10 dígitos colombianos o un número válido con prefijo 57.", "error");
+      return;
+    }
+
+    // El mensaje varía el saludo y la pregunta para evitar textos repetitivos.
+    const saludos = ["Cordial saludo", "Buen día", "Hola, ¿cómo se encuentra?", "Un gusto saludarle", "Estimado(a)"];
+    const saludoAleatorio = saludos[Math.floor(Math.random() * saludos.length)];
+
+    const preguntas = [
+      "¿Podría confirmarme si recibió esta información?",
+      "¿Me confirma si leyó este mensaje, por favor?",
+      "Quedamos atentos a su confirmación de recibido.",
+      "¿Le quedó clara la información o tiene alguna duda?",
+      "Por favor, confírmenos que recibió este comunicado."
+    ];
+    const preguntaAleatoria = preguntas[Math.floor(Math.random() * preguntas.length)];
+
+    const mensajeTexto = saludoAleatorio + ', *' + nombre + '*\n\n' +
+      'Desde *' + DATOS_MENSAJE.organizacion + '* le informamos que sus gafas ya se encuentran disponibles para entrega.\n\n' +
+      '📌 *Al momento del retiro:*\n' +
+      '• Presentar documento de identidad.\n' +
+      '• Realizar prueba de adaptación.\n' +
+      '• Verificar montura y lentes antes de retirarse.\n\n' +
+      '📌 *Importante:*\n\n' +
+      'Cuenta con 15 días hábiles de adaptación.\n' +
+      'Puede presentar molestias leves como mareo o dolor de cabeza, lo cual es normal al inicio.\n\n' +
+      '📍 *Dirección:* ' + DATOS_MENSAJE.direccion + '\n' +
+      '🕒 *Horarios:* ' + DATOS_MENSAJE.horario + '\n\n' +
+      '📌 *Línea INFORMATIVA (NO CITAS).*\n\n' +
+      'Si ya retiró sus gafas, por favor ignore este mensaje.\n\n' +
+      preguntaAleatoria + '\n\n' +
+      'Atentamente,\n*' + DATOS_MENSAJE.organizacion + '*';
+
+    const url = 'https://api.whatsapp.com/send?phone=' + telefono + '&text=' + encodeURIComponent(mensajeTexto);
+    window.open(url, '_blank');
+
+    const fechaHoraStr = obtenerMarcaFechaHora();
+
+    // La fecha se refleja en V y se conserva en el historial de trazabilidad.
+    const inputColV = document.getElementById('colV');
+    if (inputColV) {
+      inputColV.value = fechaHoraStr;
+      inputColV.style.backgroundColor = "#d9ead3";
+    }
+
+    const textareaNuevaObsSec = document.getElementById('colZ_nueva_sec');
+    if (textareaNuevaObsSec) {
+      const usuario = usuarioSesion || 'ASESOR';
+      const marcaTrazabilidad = '[' + fechaHoraStr + ' - ' + usuario + ']: NOTIFICACIÓN ENVIADA POR WHATSAPP AL ' + telefono;
+      
+      if (textareaNuevaObsSec.value.trim() === '') {
+        textareaNuevaObsSec.value = marcaTrazabilidad;
+      } else {
+        textareaNuevaObsSec.value += '\n' + marcaTrazabilidad;
+      }
+    }
+
+    showToast("WhatsApp abierto y fecha/trazabilidad registradas.", "success");
+  }
+
+  function obtenerValoresFinancieros() {
+    const total = parseFloat(document.getElementById('valorTotal').value) || 0;
+    const previos = parseFloat(document.getElementById('abonosAnteriores').value) || 0;
+    const nuevo = parseFloat(document.getElementById('nuevoAbono').value) || 0;
+    
+    const abonado = previos + nuevo;
+    const saldo = Math.max(0, total - abonado);
+    
+    return { total, previos, nuevo, abonado, saldo };
+  }
+
+  function pagarTotalidad() {
+    const total = parseFloat(document.getElementById('valorTotal').value) || 0;
+    const previos = parseFloat(document.getElementById('abonosAnteriores').value) || 0;
+    const restante = Math.max(0, total - previos);
+
+    if (restante <= 0) {
+      showToast('La orden ya no registra saldo pendiente.', 'info');
+      return;
+    }
+
+    document.getElementById('nuevoAbono').value = restante;
+    sincronizarFlujoFinanciero();
+    showToast('Monto ajustado para pago total ($' + restante.toLocaleString('es-CO') + ')', 'success');
+  }
+
+  function evaluarCamposLaboratorio() {
+    const montura = document.getElementById('colF')?.value.trim() || '';
+    const lente = document.getElementById('colG')?.value.trim() || '';
+
+    const colQ = document.getElementById('colQ_envio');
+    const colR = document.getElementById('colR_envio');
+
+    const requiereLaboratorio = (montura !== '' || lente !== '');
+
+    if (colQ && colR) {
+      colQ.disabled = !requiereLaboratorio;
+      colR.disabled = !requiereLaboratorio;
+
+      if (!requiereLaboratorio) {
+        colQ.value = '';
+        colR.value = '';
+      }
+    }
+  }
+
+  function sincronizarFlujoFinanciero() {
+    const { total, saldo } = obtenerValoresFinancieros();
+    
+    const inputSaldoOculto = document.getElementById('saldoPendiente');
+    const displaySaldo = document.getElementById('saldoPendienteDisplay');
+    const badge = document.getElementById('badgeEstadoPago');
+    const selectColO = document.getElementById('colO');
+    const inputColS = document.getElementById('colS');
+
+    if (inputSaldoOculto) inputSaldoOculto.value = saldo;
+
+    if (displaySaldo) {
+      displaySaldo.value = '$ ' + saldo.toLocaleString('es-CO');
+    }
+
+    const esObsequioOCubierto = (saldo === 0);
+
+    if (esObsequioOCubierto) {
+      if (displaySaldo) {
+        displaySaldo.style.backgroundColor = '#e6f4ea';
+        displaySaldo.style.color = '#137333';
+      }
+      
+      if (badge) {
+        if (total === 0) {
+          badge.textContent = '🎁 OBSEQUIO (100% DESC)';
+          badge.className = 'badge-status badge-completed';
+        } else {
+          badge.textContent = 'PAGADO 100%';
+          badge.className = 'badge-status badge-completed';
+        }
+      }
+
+      if (selectColO && selectColO.value !== 'HACER') {
+        selectColO.value = 'HACER';
+      }
+      if (inputColS) {
+        inputColS.disabled = false;
+        if (!inputColS.value) inputColS.value = new Date().toISOString().split('T')[0];
+      }
+    } else {
+      if (displaySaldo) {
+        displaySaldo.style.backgroundColor = '#fce8e6';
+        displaySaldo.style.color = '#c5221f';
+      }
+      if (badge) {
+        badge.textContent = 'CON SALDO PENDIENTE';
+        badge.className = 'badge-status badge-pending';
+      }
+
+      if (selectColO && selectColO.value === 'HACER') {
+        selectColO.value = 'ABONO';
+      }
+      if (inputColS) {
+        inputColS.disabled = true;
+        inputColS.value = '';
+      }
+    }
+  }
+
+  function iniciarSesion(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnLogin');
+    const u = document.getElementById('loginUser').value;
+    const p = document.getElementById('loginPass').value;
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Validando...';
+
+    google.script.run
+      .withSuccessHandler(res => {
+        btn.disabled = false;
+        btn.textContent = 'Ingresar';
+
+        try {
+          if (!res || !res.success) {
+            showToast((res && res.message) || 'No fue posible iniciar sesión.', 'error');
+            return;
+          }
+
+          usuarioSesion = res.usuarioValido || u;
+          document.getElementById('currentUserLabel').textContent = usuarioSesion;
+          document.getElementById('loginScreen').classList.add('hidden');
+          document.getElementById('mainScreen').classList.remove('hidden');
+
+          document.getElementById('colM').value = usuarioSesion;
+          document.getElementById('colP').value = usuarioSesion;
+          document.getElementById('colU').value = usuarioSesion;
+          document.getElementById('colY').value = usuarioSesion;
+
+          switchMode('registro', null);
+          showToast('Bienvenido(a), ' + usuarioSesion, 'success');
+        } catch (error) {
+          document.getElementById('mainScreen').classList.remove('hidden');
+          showToast('La sesión inició, pero hubo un error al cargar la pantalla principal: ' + error.message, 'error');
+        }
+      })
+      .withFailureHandler(err => { btn.disabled = false; btn.textContent = 'Ingresar'; showToast('Error de conexión: ' + err.message, 'error'); })
+      .validarLogin(u, p);
+  }
+
+  // Actualiza los KPI sin recargar la página completa.
+  function cargarMetricasDashboard() {
+    google.script.run
+      .withSuccessHandler(res => {
+        document.getElementById('kpiHoy').textContent = res.hoy || 0;
+        document.getElementById('kpiFact').textContent = res.fact || 0;
+        document.getElementById('kpiRec').textContent = res.rec || 0;
+        document.getElementById('kpiEnt').textContent = res.ent || 0;
+      })
+      .withFailureHandler(err => {
+        showToast('No se pudieron cargar las métricas: ' + (err.message || err), 'error');
+      })
+      .obtenerMetricasDashboard();
+  }
+
+  function seleccionarDeTabla(item) {
+    ordenSeleccionada = item;
+    document.getElementById('fila_activa').value = item.filaExacta;
+    
+    const editBanner = document.getElementById('editBannerSec');
+    const editBannerContent = document.getElementById('editBannerContent');
+    
+    if (editBanner && editBannerContent) {
+      const valorTotalCompra = parseFloat(item.totalCompra || item.valorTotal || item.total || 0);
+      const totalFormateado = '$ ' + valorTotalCompra.toLocaleString('es-CO');
+
+      const resumen = [
+        ['👤 Paciente:', item.nombre || 'N/A'],
+        ['🪪 # Documento:', item.documento || 'N/A'],
+        ['👓 Montura:', item.montura || 'Sin especificar'],
+        ['🔍 Lente:', item.lente || 'Sin especificar'],
+        ['🎒 Accesorios:', item.accesorios || 'Ninguno'],
+        ['💰 Total compra:', totalFormateado]
+      ];
+
+      // Los datos de la hoja se agregan como texto para evitar interpretar HTML.
+      editBannerContent.replaceChildren();
+      resumen.forEach(([etiqueta, valor]) => {
+        const contenedor = document.createElement('div');
+        const etiquetaElement = document.createElement('b');
+        etiquetaElement.textContent = etiqueta + ' ';
+        contenedor.appendChild(etiquetaElement);
+
+        const valorElement = document.createElement('span');
+        valorElement.textContent = valor;
+        if (etiqueta === '💰 Total compra:') {
+          valorElement.style.color = '#1a73e8';
+          valorElement.style.fontWeight = 'bold';
+        }
+        contenedor.appendChild(valorElement);
+        editBannerContent.appendChild(contenedor);
+      });
+      
+      editBanner.classList.remove('hidden');
+    }
+
+    if (document.getElementById('colZ_historial_sec')) {
+      document.getElementById('colZ_historial_sec').value = item.colZ || 'SIN OBSERVACIONES PREVIAS';
+    }
+
+    document.getElementById('valorTotal').value = item.valorTotal || item.total || 0;
+    document.getElementById('abonosAnteriores').value = item.abonoAcumulado || 0;
+    document.getElementById('nuevoAbono').value = '';
+    
+    const hoyStr = new Date().toISOString().split('T')[0];
+
+    if (currentMode === 'facturacion') {
+      document.getElementById('seccionAbono').classList.remove('hidden');
+      document.getElementById('colO').value = item.estadoFact || 'ABONO';
+      sincronizarFlujoFinanciero();
+    } else if (currentMode === 'envio') {
+      document.getElementById('colQ_envio').value = item.colQ || '';
+      document.getElementById('colR_envio').value = item.colR || '';
+      const fechaActual = item.colS && item.colS !== 'PENDIENTE' ? item.colS : hoyStr;
+      document.getElementById('colS_envio').value = fechaActual;
+    } else if (currentMode === 'llegada') {
+      if (!document.getElementById('colT').value) document.getElementById('colT').value = hoyStr;
+      if (!document.getElementById('colV').value) document.getElementById('colV').value = hoyStr;
+    } else if (currentMode === 'entrega') {
+      if (!document.getElementById('colW').value) document.getElementById('colW').value = hoyStr;
+    }
+
+    const secForm = document.getElementById('secondaryForm');
+    secForm.classList.remove('hidden');
+    secForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function actualizarEstadoValores() {
+    const inputColI = document.getElementById('colI');
+      if (inputColI) {
+        inputColI.value = 0;
+      }
+
+    const campos = [
+      { refId: 'colG', valId: 'colJ' },
+      { refId: 'colH', valId: 'colK' }
+    ];
+
+    campos.forEach(({ refId, valId }) => {
+      const inputRef = document.getElementById(refId);
+      const inputVal = document.getElementById(valId);
+      if (!inputRef || !inputVal) return;
+
+      const tieneReferencia = inputRef.value.trim() !== '';
+
+      if (esObsequio) {
+        inputVal.value = 0;
+        inputVal.disabled = true;
+      } else if (tieneReferencia) {
+        inputVal.disabled = false;
+      } else {
+        inputVal.value = 0;
+        inputVal.disabled = true;
+      }
+    });
+
+    calcularSuma();
+  }
+
+  function toggleObsequio(e) {
+    if (e) e.preventDefault();
+    
+    esObsequio = !esObsequio;
+    const btn = document.getElementById('btnObsequio');
+    
+    if (btn) {
+      if (esObsequio) {
+        btn.style.background = '#d1e7dd';
+        btn.style.color = '#0f5132';
+      } else {
+        btn.style.background = '#e8f0fe';
+        btn.style.color = '#1a73e8';
+      }
+    }
+
+    actualizarEstadoValores();
+  }
+
+  function abrirModalRegistro() {
+    document.getElementById('mainForm').reset();
+    document.getElementById('fila_activa').value = '';
+    document.getElementById('colA').value = new Date().toISOString().split('T')[0];
+    document.getElementById('colM').value = usuarioSesion;
+    
+    esObsequio = false;
+    const btn = document.getElementById('btnObsequio');
+    if (btn) {
+      btn.style.background = '#e8f0fe';
+      btn.style.color = '#1a73e8';
+    }
+
+    actualizarEstadoValores();
+    evaluarCamposLaboratorio();
+    document.getElementById('modalRegistro').classList.remove('hidden');
+  }
+
+  function cerrarModalRegistro() { document.getElementById('modalRegistro').classList.add('hidden'); }
+
+  function validarFormularioAntesDeGuardar() {
+    const montura = document.getElementById('colF').value.trim();
+    const lente = document.getElementById('colG').value.trim();
+    const accesorios = document.getElementById('colH').value.trim();
+
+    if (!montura && !lente && !accesorios) {
+      alert('⚠️ Debe registrar al menos una referencia: Montura, Lente o Accesorios.');
+      document.getElementById('colF').focus();
+      return false;
+    }
+    return true;
+  }
+
+  function cerrarSesion() {
+    usuarioSesion = null;
+    document.getElementById('mainScreen').classList.add('hidden');
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('loginUser').value = '';
+    document.getElementById('loginPass').value = '';
+  }
+
+  function cargarTablaCRUD(fase) {
+    if (fase === 'registro') { 
+      document.getElementById('crudContainer').classList.add('hidden'); 
+      return; 
+    }
+    document.getElementById('crudContainer').classList.remove('hidden');
+    const tbody = document.getElementById('tablaBodyPendientes');
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;"><span class="spinner"></span> Cargando pendientes...</td></tr>';
+
+    google.script.run
+      .withSuccessHandler(lista => {
+        tbody.replaceChildren();
+        if (!lista || lista.length === 0) { 
+          const filaVacia = document.createElement('tr');
+          const celdaVacia = document.createElement('td');
+          celdaVacia.colSpan = 9;
+          celdaVacia.style.textAlign = 'center';
+          celdaVacia.style.color = '#64748b';
+          celdaVacia.textContent = 'No hay pedidos pendientes en esta etapa.';
+          filaVacia.appendChild(celdaVacia);
+          tbody.appendChild(filaVacia);
+          return; 
+        }
+        
+        // La tabla se construye con nodos DOM y textContent para datos externos.
+        lista.forEach(item => {
+          const tr = document.createElement('tr');
+          const totalVal = parseFloat(item.valorTotal) || parseFloat(item.total) || 0;
+          const abonoVal = parseFloat(item.abonoAcumulado) || 0;
+          const saldoVal = Math.max(0, totalVal - abonoVal);
+
+          const agregarCelda = (valor, clase) => {
+            const celda = document.createElement('td');
+            if (clase) celda.className = clase;
+            celda.textContent = valor;
+            tr.appendChild(celda);
+          };
+
+          agregarCelda('#' + item.filaExacta, 'td-nowrap');
+          agregarCelda(item.documento || '-', 'td-nowrap');
+          agregarCelda(item.nombre || '-', 'col-nombre');
+          agregarCelda(item.telefono || '-', 'td-nowrap');
+          agregarCelda(item.montura || '-', 'col-texto');
+          agregarCelda(item.lente || '-', 'col-texto');
+          agregarCelda(item.accesorios || '-', 'col-texto');
+
+          const estadoCelda = document.createElement('td');
+          estadoCelda.className = 'td-nowrap';
+          const estadoBadge = document.createElement('span');
+          estadoBadge.className = 'badge-status badge-pendiente';
+          estadoBadge.textContent = item.estadoFact || 'PENDIENTE';
+
+          if (totalVal === 0) {
+            estadoBadge.className = 'badge-status badge-hacer';
+            estadoBadge.textContent = '🎁 OBSEQUIO ($0)';
+          } else if (item.estadoFact === 'ABONO') {
+            estadoBadge.className = 'badge-status badge-abono';
+            estadoBadge.textContent = 'ABONO ($' + saldoVal.toLocaleString('es-CO') + ')';
+          } else if (item.estadoFact === 'HACER') {
+            estadoBadge.className = 'badge-status badge-hacer';
+            estadoBadge.textContent = 'HACER';
+          }
+
+          estadoCelda.appendChild(estadoBadge);
+          tr.appendChild(estadoCelda);
+
+          const accionesCelda = document.createElement('td');
+          accionesCelda.className = 'td-nowrap';
+          const editarButton = document.createElement('button');
+          editarButton.type = 'button';
+          editarButton.className = 'btn-action-edit';
+          editarButton.title = 'Editar / Procesar';
+          editarButton.textContent = '✏️';
+          editarButton.addEventListener('click', () => seleccionarDeTabla(item));
+
+          const anularButton = document.createElement('button');
+          anularButton.type = 'button';
+          anularButton.className = 'btn-action-delete';
+          anularButton.title = 'Anular Orden';
+          anularButton.textContent = '🗑️';
+          anularButton.addEventListener('click', () => anularRegistroUI(item.filaExacta, item.nombre || ''));
+
+          accionesCelda.appendChild(editarButton);
+          accionesCelda.appendChild(anularButton);
+          tr.appendChild(accionesCelda);
+          tbody.appendChild(tr);
+        });
+      })
+      .withFailureHandler(err => { 
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color: #ef4444;">Error al cargar registros.</td></tr>'; 
+      })
+      .obtenerPendientesPorFase(fase);
+  }
+
+  function anularRegistroUI(fila, nombre) {
+    const motivo = prompt('¿Está seguro de anular la orden de ' + nombre + '? Ingrese el motivo:');
+    if (!motivo || motivo.trim() === '') return;
+    showToast('Anulando orden...', 'warning');
+    google.script.run
+      .withSuccessHandler(res => {
+        if (res.success) { showToast(res.message, 'success'); OcultarFormularioSecundario(); cargarTablaCRUD(currentMode); } 
+        else { showToast(res.message, 'error'); }
+      })
+      .anularOrden(fila, motivo.trim(), usuarioSesion);
+  }
+
+  function OcultarFormularioSecundario() {
+    const filaActiva = document.getElementById('fila_activa');
+    const editBanner = document.getElementById('editBannerSec');
+    const secondaryForm = document.getElementById('secondaryForm');
+    const colP = document.getElementById('colP');
+    const colU = document.getElementById('colU');
+    const colY = document.getElementById('colY');
+
+    if (filaActiva) filaActiva.value = '';
+    if (editBanner) editBanner.classList.add('hidden');
+    if (secondaryForm) {
+      secondaryForm.classList.add('hidden');
+      secondaryForm.reset();
+    }
+
+    if (colP) colP.value = usuarioSesion || '';
+    if (colU) colU.value = usuarioSesion || '';
+    if (colY) colY.value = usuarioSesion || '';
+  }
+
+  function switchMode(mode, event) {
+    currentMode = mode;
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    if (event && event.target) event.target.classList.add('active');
+
+    OcultarFormularioSecundario();
+    const esRegistro = (mode === 'registro');
+
+    document.getElementById('dashboardContainer').classList.toggle('hidden', !esRegistro);
+    document.getElementById('sectionA_Q').classList.toggle('hidden', !esRegistro);
+    if (esRegistro) cargarMetricasDashboard();
+
+    document.getElementById('sectionO_P').classList.toggle('hidden', mode !== 'facturacion');
+    document.getElementById('sectionEnvio').classList.toggle('hidden', mode !== 'envio'); // NUEVA LÍNEA
+    document.getElementById('sectionT_V').classList.toggle('hidden', mode !== 'llegada');
+    document.getElementById('sectionW_Y').classList.toggle('hidden', mode !== 'entrega');
+    document.getElementById('sectionObs_Secondary').classList.toggle('hidden', esRegistro);
+
+    document.querySelectorAll('.req-p1').forEach(el => el.required = esRegistro);
+    document.querySelectorAll('.req-p2').forEach(el => el.required = (mode === 'facturacion'));
+    document.querySelectorAll('.req-envio').forEach(el => el.required = (mode === 'envio')); // NUEVA LÍNEA
+    document.querySelectorAll('.req-p3').forEach(el => el.required = (mode === 'llegada'));
+    document.querySelectorAll('.req-p4').forEach(el => el.required = (mode === 'entrega'));
+
+    cargarTablaCRUD(mode);
+  }
+
+  function calcularSuma() {
+    const valI = parseFloat(document.getElementById('colI').value) || 0;
+    const valJ = parseFloat(document.getElementById('colJ').value) || 0;
+    const valK = parseFloat(document.getElementById('colK').value) || 0;
+    document.getElementById('colL').value = (valI + valJ + valK).toFixed(2);
+  }
+
+  function guardarDatos(e) {
+    e.preventDefault();
+    const isSec = (currentMode !== 'registro');
+    const btn = isSec ? document.getElementById('btnGuardarSec') : document.getElementById('btnGuardar');
+    const textoOriginal = btn ? btn.textContent : 'Guardar';
+
+    if (currentMode === 'registro' && !validarFormularioAntesDeGuardar()) {
+      return; 
+    }
+
+    const obsNueva = isSec 
+      ? (document.getElementById('colZ_nueva_sec') ? document.getElementById('colZ_nueva_sec').value.trim() : '')
+      : document.getElementById('colZ_nueva').value.trim();
+
+    const hoyStr = new Date().toISOString().split('T')[0];
+
+    // Un obsequio salta la fase de cobro y queda listo para elaboración.
+    let estadoInicialFact = document.getElementById('colO') ? document.getElementById('colO').value || 'PENDIENTE' : 'PENDIENTE';
+    let fechaEnvioLab = document.getElementById('colS') ? document.getElementById('colS').value || 'PENDIENTE' : 'PENDIENTE';
+
+    if (currentMode === 'registro' && esObsequio) {
+      estadoInicialFact = 'HACER'; 
+      fechaEnvioLab = hoyStr;
+    }
+
+    const formData = {
+      mode: currentMode,
+      usuarioActivo: usuarioSesion,
+      colA: document.getElementById('colA').value || 'PENDIENTE',
+      colB: document.getElementById('colB').value || 'PENDIENTE',
+      colC: document.getElementById('colC').value || 'PENDIENTE',
+      colD: document.getElementById('colD').value || 'PENDIENTE',
+      colE: document.getElementById('colE') ? document.getElementById('colE').value || 'NO REPORTA' : 'NO REPORTA',
+      colF: document.getElementById('colF').value || 'N/A',
+      colG: document.getElementById('colG').value || 'N/A',
+      colH: document.getElementById('colH').value || 'N/A',
+      colI: esObsequio ? 0 : (document.getElementById('colI').value || 0),
+      colJ: esObsequio ? 0 : (document.getElementById('colJ').value || 0),
+      colK: esObsequio ? 0 : (document.getElementById('colK') ? document.getElementById('colK').value || 0 : 0),
+      colL: esObsequio ? 0 : (document.getElementById('colL').value || 0),
+      colN: document.getElementById('colN').value || 'PENDIENTE',
+      
+      colO: estadoInicialFact,
+      colQ: currentMode === 'envio' 
+        ? (document.getElementById('colQ_envio') ? document.getElementById('colQ_envio').value || 'PENDIENTE' : 'PENDIENTE')
+        : (document.getElementById('colQ_envio') ? document.getElementById('colQ_envio').value || 'PENDIENTE' : 'PENDIENTE'),
+        
+      colR: currentMode === 'envio' 
+        ? (document.getElementById('colR_envio') ? document.getElementById('colR_envio').value || 'PENDIENTE' : 'PENDIENTE')
+        : (document.getElementById('colR_envio') ? document.getElementById('colR_envio').value || 'PENDIENTE' : 'PENDIENTE'),
+        
+      colS: currentMode === 'envio' 
+        ? (document.getElementById('colS_envio') ? document.getElementById('colS_envio').value || 'PENDIENTE' : 'PENDIENTE')
+        : fechaEnvioLab,
+      
+      colT: document.getElementById('colT') ? document.getElementById('colT').value || 'PENDIENTE' : 'PENDIENTE',
+      colV: document.getElementById('colV') ? document.getElementById('colV').value || 'PENDIENTE' : 'PENDIENTE',
+      
+      colW: document.getElementById('colW') ? document.getElementById('colW').value || 'PENDIENTE' : 'PENDIENTE',
+      colX: document.getElementById('colX') ? document.getElementById('colX').value || 'PENDIENTE' : 'PENDIENTE',
+      
+      colZ_historial: document.getElementById('colZ_historial') ? document.getElementById('colZ_historial').value : '',
+      colZ_nueva: obsNueva,
+      valorTotal: esObsequio ? 0 : (document.getElementById('valorTotal') ? document.getElementById('valorTotal').value : 0),
+      nuevoAbono: esObsequio ? 0 : (document.getElementById('nuevoAbono') ? document.getElementById('nuevoAbono').value : 0),
+      filaActiva: document.getElementById('fila_activa').value
+    };
+
+    if (currentMode === 'facturacion') {
+      const total = parseFloat(formData.valorTotal) || 0;
+      const abonoAnt = parseFloat(document.getElementById('abonosAnteriores').value) || 0;
+      const montoNuevoAbono = parseFloat(formData.nuevoAbono) || 0;
+      const saldoPendienteActual = Math.max(0, total - abonoAnt);
+
+      if (formData.colO === 'ABONO' && montoNuevoAbono <= 0) {
+        showToast('⚠️ Debe ingresar un monto mayor a $0 en "Abono Actual ($)" para procesar el abono.', 'warning');
+        const inputAbono = document.getElementById('nuevoAbono');
+        if (inputAbono) inputAbono.focus();
+        return;
+      }
+
+      if (montoNuevoAbono > saldoPendienteActual) {
+        showToast('⚠️ El abono ($' + montoNuevoAbono.toLocaleString('es-CO') + ') no puede superar el saldo pendiente ($' + saldoPendienteActual.toLocaleString('es-CO') + ').', 'error');
+        const inputAbono = document.getElementById('nuevoAbono');
+        if (inputAbono) inputAbono.focus();
+        return;
+      }
+
+      if (formData.colO === 'HACER') {
+        const saldoFinal = total - (abonoAnt + montoNuevoAbono);
+
+        if (saldoFinal > 0) {
+          const confirmar = confirm('⚠️ ADVERTENCIA DE SALDO PENDIENTE\n\nEsta orden aún tiene un saldo en mora de $' + saldoFinal.toLocaleString('es-CO') + '.\n\n¿Desea enviarla a laboratorio (HACER) de todas formas sin haber recaudado la totalidad del pago?');
+          if (!confirmar) return;
+        }
+      }
+    }
+
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Procesando...'; }
+
+    google.script.run
+      .withSuccessHandler(res => {
+        if (btn) { btn.disabled = false; btn.textContent = textoOriginal; }
+        if (res.success) {
+          if (res.financiero) {
+            document.getElementById('valorTotal').value = res.financiero.total;
+            document.getElementById('abonosAnteriores').value = res.financiero.abonado;
+            document.getElementById('nuevoAbono').value = '';
+            sincronizarFlujoFinanciero();
+          }
+          const detalleFila = res.filaExacta ? ' Fila guardada: ' + res.filaExacta : '';
+          showToast(res.message + detalleFila, 'success');
+          document.getElementById('mainForm').reset();
+          cerrarModalRegistro();
+          OcultarFormularioSecundario();
+          if (currentMode === 'registro') cargarMetricasDashboard();
+          else cargarTablaCRUD(currentMode);
+        } else { showToast(res.message, 'error'); }
+      })
+      .withFailureHandler(err => {
+        if (btn) { btn.disabled = false; btn.textContent = textoOriginal; }
+        showToast('Error de procesamiento: ' + err.message, 'error');
+      })
+      .procesarFormulario(formData);
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    // La inicialización centralizada reemplaza eventos inline del documento.
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) loginForm.addEventListener('submit', iniciarSesion);
+
+    const btnCerrarSesion = document.getElementById('btnCerrarSesion');
+    if (btnCerrarSesion) btnCerrarSesion.addEventListener('click', cerrarSesion);
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', event => switchMode(btn.dataset.mode, event));
+    });
+
+    const btnAbrirRegistro = document.getElementById('btnAbrirRegistro');
+    if (btnAbrirRegistro) btnAbrirRegistro.addEventListener('click', abrirModalRegistro);
+
+    const btnActualizarLista = document.getElementById('btnActualizarLista');
+    if (btnActualizarLista) btnActualizarLista.addEventListener('click', () => cargarTablaCRUD(currentMode));
+
+    const secondaryForm = document.getElementById('secondaryForm');
+    if (secondaryForm) secondaryForm.addEventListener('submit', guardarDatos);
+
+    const mainForm = document.getElementById('mainForm');
+    if (mainForm) mainForm.addEventListener('submit', guardarDatos);
+
+    const btnCerrarModal = document.getElementById('btnCerrarModal');
+    if (btnCerrarModal) btnCerrarModal.addEventListener('click', cerrarModalRegistro);
+
+    const btnWhatsApp = document.getElementById('btnWhatsAppRecepcion');
+    if (btnWhatsApp) btnWhatsApp.addEventListener('click', enviarWhatsAppRecepcion);
+
+    const btnPagarTodo = document.getElementById('btnPagarTodo');
+    if (btnPagarTodo) btnPagarTodo.addEventListener('click', pagarTotalidad);
+
+    ['colO', 'valorTotal', 'nuevoAbono'].forEach(id => {
+      const elemento = document.getElementById(id);
+      if (elemento) elemento.addEventListener('input', sincronizarFlujoFinanciero);
+      if (elemento && id === 'colO') elemento.addEventListener('change', sincronizarFlujoFinanciero);
+    });
+
+    ['colB', 'colD', 'colE'].forEach(id => {
+      const elemento = document.getElementById(id);
+      if (elemento) {
+        elemento.addEventListener('input', () => {
+          elemento.value = elemento.value.replace(/[^0-9]/g, '').slice(0, 10);
+        });
+      }
+    });
+
+    ['colI', 'colJ', 'colK'].forEach(id => {
+      const elemento = document.getElementById(id);
+      if (elemento) elemento.addEventListener('input', calcularSuma);
+    });
+
+    ['colF', 'colG', 'colH'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el){
+        el.addEventListener('input', function(){
+        actualizarEstadoValores();
+        evaluarCamposLaboratorio();
+        });
+      }
+       
+    });
+
+    const btnObsequio = document.getElementById('btnObsequio');
+    if (btnObsequio) {
+      btnObsequio.addEventListener('click', toggleObsequio);
+    }
+
+    actualizarEstadoValores();
+    evaluarCamposLaboratorio();
+  });
+</script>

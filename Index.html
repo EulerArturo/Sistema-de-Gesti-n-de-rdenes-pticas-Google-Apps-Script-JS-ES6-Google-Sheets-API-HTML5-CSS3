@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <title>Sistema de Gestión de Órdenes</title>
+  <?!= include('Styles'); ?>
+</head>
+<body>
+
+<!-- Contenedor global para mensajes de operación. -->
+<div id="toast-container"></div>
+
+<!-- Autenticación de asesores. Los listeners se registran en JavaScript.html. -->
+<div id="loginScreen" class="login-card">
+  <h2>Iniciar Sesión</h2>
+  <form id="loginForm">
+    <div class="field"><label>Usuario:</label><input type="text" id="loginUser" required placeholder="Ej: ASESOR1"></div>
+    <div class="field"><label>Contraseña:</label><input type="password" id="loginPass" required placeholder="••••••••"></div>
+    <button type="submit" class="btn-submit" id="btnLogin">Ingresar</button>
+  </form>
+</div>
+
+<!-- Flujo principal de registro, seguimiento y entrega. -->
+<div id="mainScreen" class="container hidden">
+  <div class="user-bar">
+    <span>Sesión activa: <b id="currentUserLabel"></b></span>
+    <button type="button" id="btnCerrarSesion" style="padding: 5px 10px;">Cerrar Sesión</button>
+  </div>
+
+  <h2>Control y Seguimiento de Órdenes</h2>
+
+  <div class="tabs">
+    <button type="button" class="tab-btn active" data-mode="registro">1. Registro Inicial</button>
+    <button type="button" class="tab-btn" data-mode="facturacion">2. Facturación (O-P)</button>
+    <button type="button" class="tab-btn" data-mode="envio">3. Envío (Q-S)</button>
+    <button type="button" class="tab-btn" data-mode="llegada">4. Recepción (T-V)</button>
+    <button type="button" class="tab-btn" data-mode="entrega">5. Entrega (W-Y)</button>
+  </div>
+
+  <div id="dashboardContainer" class="hidden">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h3 style="margin: 0;">📊 Dashboard de Control y Seguimiento</h3>
+      <button type="button" id="btnAbrirRegistro" class="btn-submit" style="width: auto; padding: 10px 20px; margin: 0;">➕ Agregar Nuevo Registro</button>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card blue"><div class="kpi-title">Órdenes Hoy</div><div class="kpi-value" id="kpiHoy">0</div></div>
+      <div class="kpi-card yellow"><div class="kpi-title">Pendientes Facturar</div><div class="kpi-value" id="kpiFact">0</div></div>
+      <div class="kpi-card orange"><div class="kpi-title">Pendientes Recepción</div><div class="kpi-value" id="kpiRec">0</div></div>
+      <div class="kpi-card green"><div class="kpi-title">Listas para Entrega</div><div class="kpi-value" id="kpiEnt">0</div></div>
+    </div>
+  </div>
+
+  <div id="crudContainer" class="hidden">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+    <h4 style="margin: 0; color: #1a73e8;" id="tituloTablaPendientes">Pedidos Pendientes</h4>
+    <button type="button" id="btnActualizarLista" style="font-size: 0.8rem; cursor: pointer;">🔄 Actualizar Lista</button>
+  </div>
+  <div class="crud-table-container">
+    <table class="crud-table">
+      <thead>
+        <tr>
+          <th>Fila</th>
+          <th>Documento</th>
+          <th>Paciente</th>
+          <th>Teléfono</th>
+          <th>Montura</th>
+          <th>Lente</th>
+          <th>Accesorios</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tablaBodyPendientes">
+        <tr><td colspan="9" style="text-align:center;">Cargando pedidos pendientes...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+  <!-- FORMULARIO SECUNDARIO -->
+  <form id="secondaryForm" class="hidden">
+    
+    <!-- Banner Resumen de la Orden Seleccionada -->
+    <div id="editBannerSec" class="hidden" style="background: #e8f0fe; border-left: 5px solid #1a73e8; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #d2e3fc; padding-bottom: 6px;">
+        <span style="font-size: 0.75rem; font-weight: bold; background: #1a73e8; color: white; padding: 3px 10px; border-radius: 12px; letter-spacing: 0.5px;">ORDEN SELECCIONADA</span>
+      </div>
+      
+      <div id="editBannerContent" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; font-size: 0.88rem; color: #202124;">
+        <!-- Los datos se insertan dinámicamente -->
+      </div>
+    </div>
+
+    <!-- FASE 2: O-P -->
+    <div id="sectionO_P" class="hidden">
+      <h3>2. Actualización de Facturación</h3>
+      <div class="form-group">
+        <div class="field">
+          <label>Col O - ESTADO ELABORACIÓN:</label>
+          <select id="colO" class="req-p2">
+            <option value="">-- Seleccione --</option>
+            <option value="HACER">HACER</option>
+            <option value="PENDIENTE">PENDIENTE</option>
+            <option value="ABONO">ABONO</option>
+          </select>
+        </div>
+        
+        <div class="field"><label>Col P - FACTURADOR:</label><input type="text" id="colP" readonly></div>
+      </div>
+
+        <!-- Bloque Contable Optimizado -->
+        <div id="seccionAbono" class="hidden" style="background: #f8f9fa; border-left: 4px solid #1a73e8; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h4 style="margin: 0; color: #202124;">💵 Registro de Pagos y Abonos</h4>
+            <span id="badgeEstadoPago" class="badge-status badge-pending">PENDIENTE</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+            
+            <div>
+              <label style="font-weight: 600; font-size: 0.85rem; color: #5f6368;">Valor Total Orden ($):</label>
+              <input type="number" id="valorTotal" class="form-control" placeholder="0">
+            </div>
+
+            <div>
+              <label style="font-weight: 600; font-size: 0.85rem; color: #5f6368;">Abonos Previos ($):</label>
+              <input type="number" id="abonosAnteriores" class="form-control" readonly style="background-color: #e9ecef; font-weight: bold; color: #495057;" value="0">
+            </div>
+
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <label style="font-weight: 600; font-size: 0.85rem; color: #5f6368;">Abono Actual ($):</label>
+                <button type="button" id="btnPagarTodo" style="border: none; background: transparent; color: #1a73e8; font-size: 0.75rem; font-weight: bold; cursor: pointer; text-decoration: underline;">
+                  ⚡ Pagar Restante
+                </button>
+              </div>
+              <input type="number" id="nuevoAbono" class="form-control" placeholder="Ingrese monto...">
+            </div>
+
+            <div>
+              <label style="font-weight: 600; font-size: 0.85rem; color: #5f6368;">Nuevo Saldo Pendiente ($):</label>
+              <input type="text" id="saldoPendienteDisplay" class="form-control" readonly style="font-weight: bold; color: #d93025; background-color: #fce8e6;">
+              <input type="hidden" id="saldoPendiente">
+            </div>
+
+          </div>
+        </div>
+    </div>
+
+<!-- Datos de envío al laboratorio (Q:S). -->
+    <div id="sectionEnvio" class="hidden">
+      <h3>3. Actualización de Envío a Laboratorio</h3>
+      <div class="form-group">
+        <div class="field"><label>Col Q - Nº ORDEN LAB:</label><input type="text" id="colQ_envio" class="req-envio" placeholder="Número de orden de laboratorio"></div>
+        <div class="field"><label>Col R - LAB RESPONSABLE:</label><input type="text" id="colR_envio" class="req-envio" placeholder="Nombre del laboratorio"></div>
+        <div class="field"><label>Col S - FECHA ENVÍO LAB:</label><input type="date" id="colS_envio" class="req-envio"></div>
+      </div>
+    </div>
+
+    <!-- FASE 3: T-V -->
+    <div id="sectionT_V" class="hidden">
+      <h3>3. Recepción de Producto Terminado</h3>
+      <div class="form-group">
+        <div class="field"><label>Col T - FECHA INGRESO PRODUCTO:</label><input type="date" id="colT" class="req-p3"></div>
+        <div class="field"><label>Col U - ASESOR RESPONSABLE LLAMADO:</label><input type="text" id="colU" readonly></div>
+        <div class="form-group">
+        <label for="colV">Col V - FECHA LLAMADO/MSJ:</label>
+        <div style="display: flex; gap: 10px;">
+          <input type="text" id="colV" class="form-control" placeholder="dd/mm/yyyy hh:mm" readonly>
+          
+          <button type="button" id="btnWhatsAppRecepcion" class="btn btn-success">
+            📲 Enviar WhatsApp
+          </button>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <!-- FASE 4: W-Y -->
+    <div id="sectionW_Y" class="hidden">
+      <h3>4. Entrega a Paciente</h3>
+      <div class="form-group">
+        <div class="field"><label>Col W - FECHA ENTREGA USUARIO:</label><input type="date" id="colW" class="req-p4"></div>
+        <div class="field">
+          <label>Col X - ESTADO:</label>
+          <select id="colX" class="req-p4">
+            <option value="">-- Seleccione --</option>
+            <option value="RETIRADO">RETIRADO</option>
+            <option value="NO RETIRADO">NO RETIRADO</option>
+          </select>
+        </div>
+        <div class="field"><label>Col Y - RESPONSABLE ENTREGA:</label><input type="text" id="colY" readonly></div>
+      </div>
+    </div>
+
+    <div id="sectionObs_Secondary" class="hidden">
+      <div class="field"><label>Col Z - HISTORIAL DE OBSERVACIONES:</label><textarea id="colZ_historial_sec" readonly style="background-color: #f1f3f4; min-height: 50px;"></textarea></div>
+      <div class="field"><label>Agregar Nueva Observación / Nota:</label><textarea id="colZ_nueva_sec" placeholder="Escriba aquí la nueva información..."></textarea></div>
+      <button type="submit" class="btn-submit" id="btnGuardarSec">Actualizar Registro</button>
+    </div>
+  </form>
+</div>
+
+<!-- Modal de captura para la fase inicial de la orden. -->
+<div id="modalRegistro" class="modal-overlay hidden">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 style="margin: 0;">1. Datos Iniciales de Solicitud</h3>
+      <span class="close-modal" id="btnCerrarModal">&times;</span>
+    </div>
+    
+    <div id="sectionA_Q">
+      <form id="mainForm">
+        <input type="hidden" id="fila_activa" value="">
+        
+        <div class="form-group">
+          <div class="field"><label>Col A - FECHA:</label><input type="date" id="colA" class="req-p1" required></div>
+          <div class="field"><label>Col B - IDENTIFICACIÓN:</label><input type="text" id="colB" class="req-p1" required maxlength="10" inputmode="numeric" placeholder="Solo numeros (máx. 10)"></div>
+          <div class="field"><label>Col C - NOMBRE PACIENTE:</label><input type="text" id="colC" class="req-p1" required></div>
+        </div>
+
+        <div class="form-group">
+          <div class="field"><label>Col D - TELÉFONO 1:</label><input type="text" id="colD" class="req-p1" required pattern="\d{10}"  minlength="10" maxlength="10" inputmode="numeric" placeholder="Solo números (máx. 10)"></div>
+          <div class="field"><label>Col E - TELÉFONO 2:</label><input type="text" id="colE" pattern="\d{10}" minlength="10" maxlength="10" inputmode="numeric" placeholder="Solo números máx 10, (opcional)"></div>
+        </div>
+
+        <div class="form-group">
+          <div class="field"><label>Col F - REF MONTURA:</label><input type="text" id="colF" ></div>
+          <div class="field"><label>Col G - REF LENTE:</label><input type="text" id="colG" ></div>
+          <div class="field"><label>Col H - ACCESORIOS:</label><input type="text" id="colH" ></div>
+        </div>
+
+        <!-- SECCIÓN DE VALORES Y SUMA AUTOMÁTICA -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+          <label style="font-weight: bold; color: #1a73e8;">Valores de la Orden:</label>
+            <button type="button" id="btnObsequio" style="border: none; background: #e8f0fe; color: #1a73e8; padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer;">
+            🎁 Marcar como Obsequio ($0)
+          </button>
+        </div>
+
+        <div class="form-group">
+          <div class="field hidden"><label>Col I - VALOR MONTURA ($):</label><input type="number" id="colI" value="0"></div>
+          <div class="field"><label>Col J - VALOR LENTE ($):</label><input type="number" id="colJ" value="0" class="req-p1"></div>
+          <div class="field"><label>Col K - VALOR ACCESORIOS ($):</label><input type="number" id="colK" value="0" class="req-p1"></div>
+          <div class="field"><label>Col L - TOTAL ($):</label><input type="number" id="colL" value="0" readonly required></div>
+        </div>
+
+        <div class="form-group">
+          <div class="field"><label>Col M - RESPONSABLE DILIGENCIAMIENTO:</label><input type="text" id="colM" readonly></div>
+          <div class="field"><label>Col N - RESPONSABLE PAGO:</label><input type="text" id="colN" class="req-p1" required></div>
+        </div>
+
+        <div class="field"><label>Col Z - HISTORIAL DE OBSERVACIONES:</label><textarea id="colZ_historial" readonly style="background-color: #f1f3f4; min-height: 50px;"></textarea></div>
+        <div class="field"><label>Agregar Nueva Observación / Nota:</label><textarea id="colZ_nueva" placeholder="Escriba aquí la nueva información..."></textarea></div>
+
+        <button type="submit" class="btn-submit" id="btnGuardar">Guardar Nuevo Registro</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<?!= include('JavaScript'); ?>
+
+</body>
+</html>
+
