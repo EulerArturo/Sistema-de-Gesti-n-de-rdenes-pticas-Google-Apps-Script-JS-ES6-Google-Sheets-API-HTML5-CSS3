@@ -27,7 +27,7 @@ Aplicación web interna para registrar y controlar órdenes ópticas desde la so
 
 > Sustituye las rutas de ejemplo por capturas o GIFs del entorno de demostración antes de publicar el repositorio.
 
-![Dashboard de órdenes](docs/dashboard-preview.png)
+![Dashboard de órdenes]([docs/dashboard-preview.png](https://drive.google.com/file/d/1ZKAjumDanb9U6K303pBujsjCLrk68088/view?usp=drive_link))
 
 ![Flujo de facturación y abonos](docs/billing-flow-preview.png)
 
